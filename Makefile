@@ -15,41 +15,18 @@ MAVPROXY_EXISTS := $(shell command -v mavproxy.py 2>/dev/null)$(shell command -v
 
 all: build
 
-# Resolve python paths
-PYTHON3_PATH   := $(shell command -v python3 2>/dev/null)
-PYTHON312_PATH := $(shell command -v python3.12 2>/dev/null)
-
+# Check if uv is available
 check-uv:
 ifndef UV_EXISTS
 	$(error ❌ uv is not installed. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh)
 endif
-
 ifndef VENV_EXISTS
-	$(warning ⚠️  Python virtual environment not found at .venv. Run make setup or uv sync to make it)
+	$(warning ⚠️  Python virtual environment not found at .venv. Creating one...)
+	@uv sync
+	$(info ✅ Virtual environment created and dependencies synced.)
 else
 	$(info ✅ Virtual environment found at .venv.)
 endif
-
-# ---- Python checks ----
-ifeq ($(PYTHON3_PATH),)
-	$(error ❌ python3 not found in PATH)
-endif
-
-ifeq ($(PYTHON312_PATH),)
-	$(error ❌ python3.12 not found in PATH)
-endif
-
-ifneq ($(PYTHON3_PATH),/usr/bin/python3)
-	$(error ❌ python3 resolves to $(PYTHON3_PATH). Expected /usr/bin/python3 (not ~/.local/bin))
-endif
-
-ifneq ($(PYTHON312_PATH),/usr/bin/python3.12)
-	$(error ❌ python3.12 resolves to $(PYTHON312_PATH). Expected /usr/bin/python3.12 (not ~/.local/bin))
-endif
-
-$(info ✅ python3     → $(PYTHON3_PATH))
-$(info ✅ python3.12  → $(PYTHON312_PATH))
-
 
 check-ros: check-uv
 ifndef ROS_JAZZY_EXISTS
@@ -58,23 +35,16 @@ endif
 	$(info ✅ ROS Jazzy found.)
 
 # Build the workspace
-
-# Alternativley you can use mold which is a bit faster
-LINKER=lld
 CMAKE_ARGS:= -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
 			 -DCMAKE_COLOR_DIAGNOSTICS=ON \
-			 -GNinja \
-			 -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=$(LINKER) \
-			 -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=$(LINKER) \
-			 -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=$(LINKER) \
-			 --no-warn-unused-cli
+			 -GNinja
 
 SKIP_PACKAGES ?= vision_boundingbox vision_depth
 COLCON_ARGS:= --cmake-args $(CMAKE_ARGS) \
                           --parallel-workers $(shell nproc) \
 			  --packages-skip $(SKIP_PACKAGES) \
 			  --symlink-install \
-			  --event-handlers console_cohesion+
+			  --event-handlers console_cohesion+ \
 			  # --merge-install
 
 build: check-ros
@@ -88,26 +58,6 @@ build: check-ros
 repoversion:
 	$(info Last commit in repository:)
 	@git log -1 --oneline
-
-changed:
-	@packages=$$( \
-		git diff --name-only | \
-		while read f; do \
-			dir=$$(dirname "$$f"); \
-			for i in 0 1 2 3; do \
-				cand="$$dir"; \
-				for j in $$(seq 1 $$i); do \
-					cand=$$(dirname "$$cand"); \
-				done; \
-				if [ -f "$$cand/package.xml" ]; then \
-					cd "$$cand" && pwd; \
-					break; \
-				fi; \
-			done; \
-		done | sort -u \
-	); \
-	echo "Packages to build:"; \
-	echo "$$packages"
 
 build-docker-container:
 	$(info Building Docker container...)
